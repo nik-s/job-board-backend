@@ -1,14 +1,16 @@
 const mongoose = require('mongoose')
 const Schema = mongoose.Schema
 
-const TweetSchema = new Schema({
+const CvSchema = new Schema({
   userId: {
     type: String,
     required: true,
   },
-  text: {
-    type: String,
-    required: true,
+  experience: {
+    type: [String],
+  },
+  education: {
+    type: [String],
   },
   date: {
     type: Date,
@@ -16,4 +18,4 @@ const TweetSchema = new Schema({
   },
 })
 
-module.exports = Tweet = mongoose.model('tweet', TweetSchema)
+module.exports = Cv = mongoose.model('Cv', CvSchema)

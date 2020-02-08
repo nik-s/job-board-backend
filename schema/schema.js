@@ -1,26 +1,44 @@
 const graphql = require('graphql')
 const { Pagination } = require('@limit0/mongoose-graphql-pagination')
-const bcrypt = require('bcryptjs')
-const jwt = require('jsonwebtoken')
-const passport = require('passport')
+
+// Import MongoDB types
 const User = require('../models/User')
-const Tweet = require('../models/Tweet')
-const validateRegisterInput = require('../validation/register')
-const validateLoginInput = require('../validation/login')
+const Company = require('../models/Company')
+const Job = require('../models/Job')
+const Cv = require('../models/Cv')
+
+// Import GraphQL types
+const UserType = require('./types/User')
+const CompanyType = require('./types/Company')
+const JobType = require('./types/Job')
+const CvType = require('./types/Cv')
+const SortType = require('./types/Sort')
+const FilterType = require('./types/Filter')
+
+// Import mutations
+const registerUser = require('./mutations/registerUser')
+const registerCompany = require('./mutations/registerCompany')
+const loginUser = require('./mutations/loginUser')
+const loginCompany = require('./mutations/loginCompany')
+const composeJob = require('./mutations/composeJob')
+const composeCv = require('./mutations/composeCv')
+const updateUser = require('./mutations/updateUser')
+const updateUserPassword = require('./mutations/updateUserPassword')
+const updateCompany = require('./mutations/updateCompany')
+const updateCompanyPassword = require('./mutations/updateCompanyPassword')
+const updateCv = require('./mutations/updateCv')
+const updateJob = require('./mutations/updateJob')
+const deleteUser = require('./mutations/deleteUser')
+const deleteCompany = require('./mutations/deleteCompany')
 
 const {
   GraphQLObjectType,
   GraphQLString,
-  GraphQLBoolean,
   GraphQLSchema,
   GraphQLID,
   GraphQLFloat,
   GraphQLList,
-  GraphQLNonNull,
-  GraphQLInputObjectType,
-  GraphQLError,
 } = graphql
-const { GraphQLDateTime } = require('graphql-iso-date')
 
 /**
  * @param {Object} args
@@ -38,6 +56,7 @@ const getFilteredOrPaginated = function(args, model) {
   if (args.sort) {
     let order
 
+    // TODO create enums
     if (args.sort.order === 'ASC') {
       order = 1
     } else if (args.sort.order === 'DESC') {
@@ -67,97 +86,20 @@ const getFilteredOrPaginated = function(args, model) {
   })
 }
 
-// Based on: https://stackoverflow.com/a/45379297
-const auth = (req, res) =>
-  new Promise((resolve, reject) => {
-    passport.authenticate('jwt', { session: false }, (err, user) => {
-      if (err) reject(err)
-      if (user) resolve(user)
-      else reject('Unauthorized')
-    })(req, res)
-  })
-
-const UserType = new GraphQLObjectType({
-  name: 'User',
-  fields: () => ({
-    id: {
-      type: GraphQLID,
-    },
-    handle: {
-      type: GraphQLString,
-    },
-    email: {
-      type: GraphQLString,
-    },
-    password: {
-      type: GraphQLString,
-    },
-    date: {
-      type: GraphQLDateTime,
-    },
-    success: {
-      type: GraphQLBoolean,
-    },
-    token: {
-      type: GraphQLString,
-    },
-  }),
-})
-
-const TweetType = new GraphQLObjectType({
-  name: 'Tweet',
-  fields: () => ({
-    id: {
-      type: GraphQLID,
-    },
-    userId: {
-      type: GraphQLID,
-    },
-    user: {
-      type: UserType,
-      resolve(parent, _args) {
-        return User.findById(parent.userId)
-      },
-    },
-    text: {
-      type: GraphQLString,
-    },
-    date: {
-      type: GraphQLDateTime,
-    },
-  }),
-})
-
-const SortType = new GraphQLInputObjectType({
-  name: 'Sort',
-  fields: () => ({
-    field: {
-      type: new GraphQLNonNull(GraphQLString),
-    },
-    order: {
-      type: GraphQLString,
-    },
-  }),
-})
-
-const FilterType = new GraphQLInputObjectType({
-  name: 'Filter',
-  fields: () => ({
-    /**
-     * TODO
-     * https://docs.mongodb.com/manual/reference/operator/query-comparison/
-     */
-    field: {
-      type: new GraphQLNonNull(GraphQLString),
-    },
-    eq: {
-      type: GraphQLString,
-    },
-    ne: {
-      type: GraphQLString,
-    },
-  }),
-})
+const listArgs = {
+  first: {
+    type: GraphQLFloat,
+  },
+  after: {
+    type: GraphQLString,
+  },
+  sort: {
+    type: SortType,
+  },
+  filter: {
+    type: FilterType,
+  },
+}
 
 const RootQuery = new GraphQLObjectType({
   name: 'RootQueryType',
@@ -173,55 +115,73 @@ const RootQuery = new GraphQLObjectType({
         return User.findById(args.id)
       },
     },
-    tweet: {
-      type: TweetType,
+    company: {
+      type: CompanyType,
       args: {
         id: {
           type: GraphQLID,
         },
       },
       resolve(_parent, args) {
-        return Tweet.findById(args.id)
+        return Company.findById(args.id)
+      },
+    },
+    job: {
+      type: JobType,
+      args: {
+        id: {
+          type: GraphQLID,
+        },
+      },
+      resolve(_parent, args) {
+        return Job.findById(args.id)
+      },
+    },
+    cv: {
+      type: CvType,
+      args: {
+        id: {
+          type: GraphQLID,
+        },
+      },
+      resolve(_parent, args) {
+        return Cv.findById(args.id)
       },
     },
     users: {
       type: new GraphQLList(UserType),
       args: {
-        first: {
-          type: GraphQLFloat,
-        },
-        after: {
-          type: GraphQLString,
-        },
-        sort: {
-          type: SortType,
-        },
-        filter: {
-          type: FilterType,
-        },
+        ...listArgs,
       },
       resolve(_parent, args) {
         return getFilteredOrPaginated(args, User)
       },
     },
-    tweets: {
-      type: new GraphQLList(TweetType),
+    companies: {
+      type: new GraphQLList(CompanyType),
       args: {
-        first: {
-          type: GraphQLFloat,
-        },
-        after: {
-          type: GraphQLFloat,
-        },
-        sort: {
-          type: SortType,
-        },
-        filter: {
-          type: FilterType,
-        },
+        ...listArgs,
       },
       resolve(_parent, args) {
-        return getFilteredOrPaginated(args, Tweet)
+        return getFilteredOrPaginated(args, Company)
+      },
+    },
+    jobs: {
+      type: new GraphQLList(JobType),
+      args: {
+        ...listArgs,
+      },
+      resolve(_parent, args) {
+        return getFilteredOrPaginated(args, Job)
+      },
+    },
+    cvs: {
+      type: new GraphQLList(CvType),
+      args: {
+        ...listArgs,
+      },
+      resolve(_parent, args) {
+        return getFilteredOrPaginated(args, Cv)
       },
     },
   },
@@ -231,170 +191,40 @@ const Mutation = new GraphQLObjectType({
   name: 'Mutation',
   fields: {
     /**
-     * Register mutation
+     * Register mutations
      */
-    register: {
-      type: UserType,
-      args: {
-        handle: {
-          type: new GraphQLNonNull(GraphQLString),
-        },
-        email: {
-          type: new GraphQLNonNull(GraphQLString),
-        },
-        password: {
-          type: new GraphQLNonNull(GraphQLString),
-        },
-        password2: {
-          type: new GraphQLNonNull(GraphQLString),
-        },
-      },
-      resolve(_parent, args) {
-        const { handle, email, password } = args
-        const { errors, isValid } = validateRegisterInput(args)
-        return new Promise((res, rej) => {
-          if (!isValid) {
-            rej()
-          }
+    registerUser,
+    registerCompany,
 
-          User.findOne({ handle }).then(user => {
-            if (user) {
-              errors.handle = 'User already exists'
-              rej()
-            } else {
-              const newUser = new User({
-                handle,
-                email,
-                password,
-              })
-
-              bcrypt.genSalt(10, (_err, salt) => {
-                bcrypt.hash(newUser.password, salt, (err, hash) => {
-                  if (err) throw new GraphQLError(JSON.stringify(err))
-                  newUser.password = hash
-                  newUser
-                    .save()
-                    .then(user => {
-                      const payload = { id: user.id, handle: user.handle }
-
-                      jwt.sign(
-                        payload,
-                        process.env.SECRET_OR_KEY,
-                        { expiresIn: 3600 },
-                        (_err, token) => {
-                          res({
-                            id: user.id,
-                            handle: user.handle,
-                            email: user.email,
-                            success: true,
-                            token: 'Bearer ' + token,
-                          })
-                        }
-                      )
-                    })
-                    .catch(err => console.log(err))
-                })
-              })
-            }
-          })
-        }).catch(() => {
-          const keys = Object.keys(errors)
-          keys.map(key => {
-            throw new GraphQLError(errors[key])
-          })
-        })
-      },
-    },
     /**
-     * Login mutation
+     * Login mutations
      */
-    login: {
-      type: UserType,
-      args: {
-        email: {
-          type: new GraphQLNonNull(GraphQLString),
-        },
-        password: {
-          type: new GraphQLNonNull(GraphQLString),
-        },
-      },
-      resolve(_parent, args) {
-        const { errors, isValid } = validateLoginInput(args)
-        const { email, password } = args
-        return new Promise((res, rej) => {
-          if (!isValid) {
-            rej()
-          }
+    loginUser,
+    loginCompany,
 
-          User.findOne({ email }).then(user => {
-            if (!user) {
-              errors.email = 'This user does not exist'
-              rej()
-            }
-
-            bcrypt.compare(password, user.password).then(isMatch => {
-              if (isMatch) {
-                const payload = { id: user.id, handle: user.handle }
-
-                jwt.sign(
-                  payload,
-                  process.env.SECRET_OR_KEY,
-                  // Tell the key to expire in one hour
-                  { expiresIn: 3600 },
-                  (_err, token) => {
-                    res({
-                      id: user.id,
-                      handle: user.handle,
-                      email: user.email,
-                      success: true,
-                      token: 'Bearer ' + token,
-                    })
-                  }
-                )
-              } else {
-                errors.password = 'Incorrect password'
-                rej()
-              }
-            })
-          })
-        }).catch(() => {
-          const keys = Object.keys(errors)
-          keys.map(key => {
-            throw new GraphQLError(errors[key])
-          })
-        })
-      },
-    },
     /**
-     * Compose tweet mutation
+     * Update mutations
      */
-    composeTweet: {
-      type: TweetType,
-      args: {
-        userId: {
-          type: GraphQLID,
-        },
-        text: {
-          type: GraphQLString,
-        },
-      },
-      resolve(_parent, args, request, response) {
-        return auth(request, response)
-          .then(() => {
-            const newTweet = new Tweet({
-              userId: args.userId,
-              text: args.text,
-            })
+    updateUser,
+    updateCompany,
+    updateUserPassword,
+    updateCompanyPassword,
+    updateCv,
+    updateJob,
 
-            return newTweet.save().then(tweet => {
-              return tweet
-            })
-          })
-          .catch(err => {
-            throw new GraphQLError(JSON.stringify(err))
-          })
-      },
-    },
+    /**
+     * Compose mutations
+     */
+    composeJob,
+    composeCv,
+
+    /**
+     * Delete mutations
+     */
+    deleteUser,
+    deleteCompany,
+    // deleteCv,
+    // deleteJob,
   },
 })
 
