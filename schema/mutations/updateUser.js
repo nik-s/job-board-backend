@@ -5,6 +5,67 @@ const UserType = require('../types/User')
 const User = require('../../models/User')
 const validateUpdateInput = require('../../validation/updateUser')
 
+/**
+ * @param {String} id
+ * @param {Object} errors
+ */
+const findUser = function(id, errors) {
+  return new Promise(function(resolve, reject) {
+    User.findById(id).then(function(user) {
+      if (!user) {
+        errors.email = 'This user does not exist'
+        reject({ errors })
+      } else {
+        resolve(user)
+      }
+    })
+  })
+}
+
+/**
+ * @param {String} handle
+ * @param {Object} user
+ */
+const updateHandle = function(handle, user) {
+  return new Promise(function(resolve, reject) {
+    if (handle) {
+      User.findOne({ handle }).then(function(existingUser) {
+        if (existingUser) {
+          errors.handle = 'User already exists'
+          reject({ errors })
+        } else {
+          user.handle = handle
+          resolve(user)
+        }
+      })
+    } else {
+      resolve(user)
+    }
+  })
+}
+
+/**
+ * @param {String} email
+ * @param {Object} user
+ */
+const updateEmail = function(email, user) {
+  return new Promise((resolve, reject) => {
+    if (email) {
+      User.findOne({ email }).then(existingUser => {
+        if (existingUser) {
+          errors.email = 'User already exists'
+          reject({ errors })
+        } else {
+          user.email = email
+          resolve(user)
+        }
+      })
+    } else {
+      resolve(user)
+    }
+  })
+}
+
 const updateUser = {
   type: UserType,
   args: {
@@ -28,80 +89,45 @@ const updateUser = {
     },
   },
   resolve(_parent, args, request, response) {
-    return authUser(request, response)
-      .then(() => {
-        const { errors, isValid } = validateUpdateInput(args)
-        return new Promise((res, rej) => {
+    const { errors, isValid } = validateUpdateInput(args)
+    const { id, handle, firstName, lastName, intro, email } = args
+    return new Promise(function(res, rej) {
+      authUser(request, response, errors)
+        .then(() => {
           if (!isValid) {
             rej({ errors })
           }
 
-          const { id, handle, firstName, lastName, intro, email } = args
-
-          User.findById(id)
-            .then(user => {
-              let promises = []
-
-              const updateHandle = new Promise(
-                (handleResolve, handleReject) => {
-                  User.findOne({ handle }).then(existingUser => {
-                    if (existingUser) {
-                      errors.handle = 'User already exists'
-                      handleReject({ errors })
-                    } else {
-                      user.handle = handle
-                      handleResolve()
-                    }
-                  })
-                }
-              )
-
-              const updateEmail = new Promise((emailResolve, emailReject) => {
-                User.findOne({ email }).then(existingUser => {
-                  if (existingUser) {
-                    errors.email = 'User already exists'
-                    emailReject({ errors })
-                  } else {
-                    user.email = email
-                    emailResolve()
-                  }
-                })
-              })
-
-              const updateFirstName = () => (user.firstName = firstName)
-              const updateLastName = () => (user.lastName = lastName)
-              const updateIntro = () => (user.intro = intro)
-
-              if (handle) promises.push(updateHandle)
-              if (email) promises.push(updateEmail)
-              if (firstName) promises.push(updateFirstName)
-              if (lastName) promises.push(updateLastName)
-              if (intro) promises.push(updateIntro)
-
-              Promise.all(promises)
-                .then(() => {
-                  user.save()
-                  res(user)
-                })
-                .catch(err => {
-                  console.log('TCL: resolve -> err', err)
-                  rej({ errors })
-                })
+          findUser(id, errors)
+            .then(function(user) {
+              return updateHandle(handle, user)
             })
-            .catch(err => {
-              console.log('TCL: resolve -> err 2', err)
-              rej({ ...errors, error: err.message })
+            .then(function(user) {
+              return updateEmail(email, user)
             })
-        }) /*.catch(err => {
-          rej({ ...errors, error: err.message })
-        })*/
-      })
-      .catch(err => {
-        const keys = Object.keys(err.errors)
-        keys.map(key => {
-          throw new GraphQLError(err.errors[key])
+            .then(function(user) {
+              if (firstName) user.firstName = firstName
+              if (lastName) user.lastName = lastName
+              if (intro) user.intro = intro
+
+              return user.save()
+            })
+            .then(function(user) {
+              res(user)
+            })
+            .catch(function(err) {
+              rej({ errors: err.errors })
+            })
         })
+        .catch(function(err) {
+          rej({ errors: err.errors })
+        })
+    }).catch(err => {
+      const keys = Object.keys(err.errors)
+      keys.map(key => {
+        throw new GraphQLError(err.errors[key])
       })
+    })
   },
 }
 

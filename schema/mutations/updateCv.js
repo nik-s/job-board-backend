@@ -10,6 +10,22 @@ const {
 const CvType = require('../types/Cv')
 const Cv = require('../../models/Cv')
 
+/**
+ * @param {String} id
+ */
+const findCv = function(id, errors) {
+  return new Promise(function(resolve, reject) {
+    Cv.findById(id)
+      .then(function(cv) {
+        resolve(cv)
+      })
+      .catch(function(err) {
+        errors.cv = err.message
+        reject({ errors })
+      })
+  })
+}
+
 const updateCv = {
   type: CvType,
   args: {
@@ -27,31 +43,35 @@ const updateCv = {
     },
   },
   resolve(_parent, args, request, response) {
-    return authUser(request, response)
-      .then(user => {
-        return new Promise((res, rej) => {
-          const { id, userId, experience, education } = args
+    const { id, userId, experience, education } = args
+    let errors = {}
+    return new Promise(function(res, rej) {
+      authUser(request, response, errors)
+        .then(function(user) {
           if (user.id !== userId) {
-            rej({ message: 'Unauthorized' })
+            errors.auth = 'Unauthorized'
+            rej({ errors })
           }
 
-          Cv.findById(id)
-            .then(cv => {
-              if (experience) cv.experience = experience
-              if (education) cv.education = education
-              cv.save()
-              res(cv)
-            })
-            .catch(err => {
-              rej({ message: err.message })
-            })
-        }).catch(err => {
-          rej({ message: err.message })
+          return findCv(id, errors)
         })
+        .then(function(cv) {
+          if (experience) cv.experience = experience
+          if (education) cv.education = education
+          return cv.save()
+        })
+        .then(function(cv) {
+          res(cv)
+        })
+        .catch(function(err) {
+          rej({ errors: err.errors })
+        })
+    }).catch(err => {
+      const keys = Object.keys(err.errors)
+      keys.map(key => {
+        throw new GraphQLError(errors[key])
       })
-      .catch(err => {
-        if (err.message) throw new GraphQLError(err.message)
-      })
+    })
   },
 }
 

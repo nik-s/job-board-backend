@@ -6,6 +6,47 @@ const validateLoginInput = require('../../validation/login')
 const CompanyType = require('../types/Company')
 const authCompany = require('../../auth/authCompany')
 
+/**
+ * @param {String} email
+ * @param {Object} errors
+ */
+const findCompany = function(email, errors) {
+  return new Promise(function(resolve, reject) {
+    Company.findOne({ email }).then(function(company) {
+      if (!company) {
+        errors.email = 'This company does not exist'
+        reject({ errors })
+      } else {
+        resolve(company)
+      }
+    })
+  })
+}
+
+/**
+ * @param {String} password
+ * @param {Object} company
+ * @param {Object} errors
+ */
+const comparePasswords = function(password, company, errors) {
+  return new Promise(function(resolve, reject) {
+    bcrypt
+      .compare(password, company.password)
+      .then(function(isMatch) {
+        if (isMatch) {
+          resolve(company)
+        } else {
+          errors.password = 'Incorrect password'
+          reject({ errors })
+        }
+      })
+      .catch(function(err) {
+        errors.password = err.message
+        reject({ errors })
+      })
+  })
+}
+
 const deleteCompany = {
   type: CompanyType,
   args: {
@@ -28,31 +69,26 @@ const deleteCompany = {
         rej({ errors })
       }
 
-      return authCompany(request, response)
-        .then(() => {
-          Company.findOne({ email }).then(company => {
-            if (!company) {
-              errors.email = 'This company does not exist'
+      authCompany(request, response, errors)
+        .then(function() {
+          return findCompany(email, errors)
+        })
+        .then(function(company) {
+          return comparePasswords(password, company, errors)
+        })
+        .then(function() {
+          Company.deleteOne({ email }, function(err) {
+            if (err) {
+              errors.removal = err.message
               rej({ errors })
             }
-
-            bcrypt.compare(password, company.password).then(isMatch => {
-              if (isMatch) {
-                Company.deleteOne({ email }, err => {
-                  if (err && err.message) throw new GraphQLError(err.message)
-                  res({
-                    success: true,
-                  })
-                })
-              } else {
-                errors.password = 'Incorrect password'
-                rej({ errors })
-              }
+            res({
+              success: true,
             })
           })
         })
-        .catch(err => {
-          rej({ ...errors, error: err.message })
+        .catch(function(err) {
+          rej({ errors: err.errors })
         })
     }).catch(err => {
       const keys = Object.keys(err.errors)

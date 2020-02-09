@@ -18,6 +18,7 @@ const composeCv = {
     },
   },
   resolve(_parent, args, request, response) {
+    let errors = {}
     return authUser(request, response)
       .then(() => {
         const newCv = new Cv({
@@ -31,7 +32,10 @@ const composeCv = {
         })
       })
       .catch(err => {
-        throw new GraphQLError(err.message)
+        const keys = Object.keys(err.errors)
+        keys.map(key => {
+          throw new GraphQLError(errors[key])
+        })
       })
   },
 }

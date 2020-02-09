@@ -18,7 +18,8 @@ const composeJob = {
     },
   },
   resolve(_parent, args, request, response) {
-    return authCompany(request, response)
+    let errors = {}
+    return authCompany(request, response, errors)
       .then(() => {
         const newJob = new Job({
           companyId: args.companyId,
@@ -31,7 +32,10 @@ const composeJob = {
         })
       })
       .catch(err => {
-        if (err.message) throw new GraphQLError(err.message)
+        const keys = Object.keys(err.errors)
+        keys.map(key => {
+          throw new GraphQLError(errors[key])
+        })
       })
   },
 }
